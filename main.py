@@ -55,7 +55,6 @@ class HuYa:
                 print(self.login_check())
                 time.sleep(0.1)
 
-
     def into_room(self, room_id, n):
         s = int(self.get_hul())
         print("The remaining HL is {}".format(s))
@@ -69,7 +68,6 @@ class HuYa:
         self.driver.implicitly_wait(2)  # 等待跳转
         print("Enter room:{}".format(room_id))
         time.sleep(2)
-
 
         self.driver.execute_script("document.getElementsByClassName('player-face-arrow')[0].click()")
         time.sleep(0.5)
@@ -107,7 +105,6 @@ class HuYa:
             print('Room:{} send out the {}th HL.'.format(room_id, i))
             time.sleep(1)
 
-
     def get_hul(self):
         # 进入充值页面查询虎粮
         self.driver.get("https://hd.huya.com/pay/index.html?source=web")
@@ -142,9 +139,6 @@ class HuYa:
             f.write(ret.content)
 
 
-
-
-
 if __name__ == '__main__':
     debug = False
     chrome_options = Options()
@@ -161,19 +155,24 @@ if __name__ == '__main__':
         chrome_options.add_argument("--hide-scrollbars")  # 隐藏滚动条, 应对一些特殊页面
         chrome_options.add_argument("blink-settings=imagesEnabled=false")  # 不加载图片, 提升速度
 
-    # 如果希望下次使用的时候不登录，可以把chrome data保存，但是只能同一时间同一个浏览器用
-    # 如果有多个用户也可以保存多个chrome data
     path_chrome_data = os.getcwd() + '/chromeData'
     if not Path(path_chrome_data).exists():
         os.mkdir(path_chrome_data)
     chrome_options.add_argument(r'user-data-dir=' + path_chrome_data)
+    count = 0
+    while True:
+        
+        driver = webdriver.Chrome(options=chrome_options)
 
-    driver = webdriver.Chrome(chrome_options=chrome_options)
+        hy = HuYa(driver)
 
-    hy = HuYa(driver)
+        hy.login(username="", password="")
 
-    hy.login(username="", password="")
-    hy.into_room(518512, 2)
-    hy.into_room(518511, 2)
 
-    driver.quit()
+        hy.into_room(950827, 45)
+        driver.quit()
+        count += 1
+        print(f"已执行完成{count}次")
+        time.sleep(86400)  # 一天的时间间隔，以秒为单位
+
+
