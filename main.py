@@ -1,12 +1,25 @@
+# -*- coding: utf-8 -*-
 import os
 import time
 import requests
-from pathlib import Path
 
+from PIL import Image
+from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 
+count = 0
+failed_today = False
+retry_interval = 300 # 每天重试间隔, 单位为秒
+
+# # 设置Selenium的日志级别
+# # 可选的日志级别有：DEBUG, INFO, WARNING, ERROR, CRITICAL
+# selenium_log_level = logging.WARNING  # 设置为你需要的日志级别
+
+# # 配置Selenium的日志
+# selenium_logger = logging.getLogger('selenium')
+# selenium_logger.setLevel(selenium_log_level)
 
 class HuYa:
     def __init__(self, dri: webdriver.Chrome):
@@ -23,13 +36,13 @@ class HuYa:
             status = []
         if len(status) == 1:
             username = status[0].get_attribute("textContent")
-            print("user:{} has logged in.".format(username))
+            print(time.ctime(), "\t", "user:{} has logged in.".format(username))
             return True
         return False
 
     def login(self, username, password):
         self.driver.get(self.url_userIndex)
-        print("user:{} start to login.".format(username))
+        print(time.ctime(), "\t", "user:{} start to login.".format(username))
         self.driver.implicitly_wait(2)  # 等待跳转
         if self.login_check():
             return True
@@ -49,30 +62,33 @@ class HuYa:
             self.driver.execute_script('document.getElementsByClassName("quick-icon")[0].click();')
             time.sleep(1)
             qr_url = self.driver.execute_script('return document.getElementById("qr-image").src;')
-            print("user:{} login requires authentication, you have to scan the QR code to sign in.\nQR-code url:{}".format(username, qr_url))
+            print(time.ctime(), "\t", "user:{} login requires authentication, you have to scan the QR code to sign in.\nQR-code url:{}".format(username, qr_url))
             self.get_qr(username, qr_url)
             while not self.login_check():
-                print(self.login_check())
-                time.sleep(0.1)
+                print(time.ctime(), "\t", self.login_check())
+                time.sleep(1)
 
     def into_room(self, room_id, n):
         s = int(self.get_hul())
-        print("The remaining HL is {}".format(s))
-        if s < n and s != 0:
+        print(time.ctime(), "\t", "The remaining HL is {}".format(s))
+        if n == 'all':
             n = s
-            print('The remaining HL is not enough for room:{}.'.format(room_id))
+        elif s < n and s != 0:
+            n = s
+            print(time.ctime(), "\t", 'The remaining HL is not enough for room:{}.'.format(room_id))
         elif s == 0:
-            print('The remaining HL is 0. \nroom:{} send failure'.format(room_id))
+            print(time.ctime(), "\t", 'The remaining HL is 0. \nroom:{} send failure'.format(room_id))
             return False
         self.driver.get("https://huya.com/{}".format(room_id))
         self.driver.implicitly_wait(2)  # 等待跳转
-        print("Enter room:{}".format(room_id))
+        print(time.ctime(), "\t", "Enter room:{}".format(room_id))
         time.sleep(2)
 
         self.driver.execute_script("document.getElementsByClassName('player-face-arrow')[0].click()")
         time.sleep(0.5)
         try_times = 5
         while True:
+            global failed_today
             gift_hl_id = self.driver.execute_script('''
                 gifts = document.getElementsByClassName("gift-panel-item");
                 var gift_hl_id = 0;
@@ -86,14 +102,18 @@ class HuYa:
                 return gift_hl_id;
             ''')
             if gift_hl_id != 0:
+                failed_today = False
                 break
             else:
                 try_times -= 1
                 time.sleep(1)
             if try_times == 0:
-                print("room:{} send failure".format(room_id))
+                print(time.ctime(), "\t", "room:{} send failure".format(room_id))
+                global count
+                count -= 1
+                failed_today = True
                 return False
-        print("gift_hl_id", gift_hl_id)
+        print(time.ctime(), "\t", "gift_hl_id", gift_hl_id)
 
         for i in range(n):
             self.driver.execute_script('''
@@ -102,15 +122,15 @@ class HuYa:
                     document.getElementsByClassName("btn confirm")[0].click();
                 }
             ''')
-            print('Room:{} send out the {}th HL.'.format(room_id, i))
-            time.sleep(1)
+            print(time.ctime(), "\t", 'Room:{} sended out {} HL.'.format(room_id, i + 1))
+            time.sleep(1.5)
 
     def get_hul(self):
         # 进入充值页面查询虎粮
         self.driver.get("https://hd.huya.com/pay/index.html?source=web")
         self.driver.implicitly_wait(2)  # 等待跳转
         self.driver.execute_script('document.getElementsByClassName("nav")[0].getElementsByTagName("li")[4].click();')
-        time.sleep(1)
+        time.sleep(2)
         n = self.driver.execute_script('''
             lis = document.getElementsByTagName("li");
             for(var i=0;i<lis.length;i++){
@@ -121,7 +141,7 @@ class HuYa:
             return 0;
         ''')
 
-        print("number of HL:{}".format(n))
+        print(time.ctime(), "\t", "number of HL:{}".format(n))
         return n
 
     def get_qr(self, usn, url, attach_cookie=False):
@@ -134,14 +154,18 @@ class HuYa:
                 sess.cookies.set(cookie['name'], cookie['value'])
 
         ret = sess.get(url)
-        with open('qr-{}.png'.format(usn), 'wb') as f:
-            print("qr-code saved success.")
+        image_path = f'qr-{usn}.png'
+        with open(image_path, 'wb') as f:
+            print(time.ctime(), "\t", "qr-code saved success.")
             f.write(ret.content)
+        image = Image.open(image_path)
+        image.show()
 
 
 if __name__ == '__main__':
     debug = False
     chrome_options = Options()
+    chrome_options.add_argument('--log-level=3')  # 设置日志级别为 WARNING
     if not debug:
         chrome_options.add_argument('--headless')  # 无头模式
         chrome_options.add_argument("--ignore-certificate-errors")  # 忽略证书错误
@@ -161,18 +185,17 @@ if __name__ == '__main__':
     chrome_options.add_argument(r'user-data-dir=' + path_chrome_data)
     count = 0
     while True:
-        
         driver = webdriver.Chrome(options=chrome_options)
 
         hy = HuYa(driver)
 
-        hy.login(username="", password="")
-
-
-        hy.into_room(950827, 45)
+        hy.login(username="username", password="password") # 修改为你的账号密码
+        hy.into_room(950827, 'all')
         driver.quit()
-        count += 1
-        print(f"已执行完成{count}次")
+        if failed_today:
+            print(time.ctime(), "\t", "今日送出失败，将在{}秒后重试".format(retry_interval))
+            time.sleep(retry_interval)
+            continue
+        count += 1  
+        print(time.ctime(), "\t", f"共执行完成{count}次")
         time.sleep(86400)  # 一天的时间间隔，以秒为单位
-
-
